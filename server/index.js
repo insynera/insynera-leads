@@ -296,109 +296,42 @@ const KEYWORD_GROUPS = {
   general: ['services', 'solutions', 'group', 'cleaning', 'logistics', 'media', 'tech', 'design', 'consulting', 'management'],
 };
 
-// ── HELPER: fetch one keyword ─────────────────────────────────
-async function fetchKeyword(keyword, cutoff, sic, location) {
-  try {
-    const params = new URLSearchParams({ q: keyword, items_per_page: 50 });
-    const data = await chFetch(`/search/companies?${params}`);
-    return (data.items || []).filter(c => {
-      if (c.company_status !== 'active') return false;
-      if (!c.date_of_creation) return false;
-      if (new Date(c.date_of_creation) < cutoff) return false;
-      if (sic && sic !== '') {
-        const sics = c.sic_codes || [];
-        if (!sics.some(s => String(s).startsWith(sic.slice(0, 2)))) return false;
-      }
-      if (location) {
-        const addr = JSON.stringify(c.registered_office_address || '').toLowerCase();
-        if (!addr.includes(location.toLowerCase())) return false;
-      }
-      return true;
-    });
-  } catch (e) {
-    console.error(`Keyword "${keyword}" failed:`, e.message);
-    return [];
-  }
+// ── ADVANCED SEARCH HELPER ────────────────────────────────────
+// Uses the correct /advanced-search/companies endpoint with date filters
+async function advancedSearch({ nameIncludes = '', location = '', sic = '', incorporatedFrom, incorporatedTo, size = 100 }) {
+  const params = new URLSearchParams({
+    incorporated_from: incorporatedFrom,
+    incorporated_to: incorporatedTo,
+    company_status: 'active',
+    company_type: 'ltd',
+    size: Math.min(size, 5000),
+    start_index: 0
+  });
+  if (nameIncludes) params.set('company_name_includes', nameIncludes);
+  if (location) params.set('location', location);
+  if (sic) params.set('sic_codes', sic);
+
+  console.log(`Advanced search: /advanced-search/companies?${params}`);
+  const data = await chFetch(`/advanced-search/companies?${params}`);
+  console.log(`Advanced search returned: ${(data.items || []).length} items (total hits: ${data.hits})`);
+  return data.items || [];
 }
-
-// ── SEARCH (single keyword) ───────────────────────────────────
-app.get('/api/search', async (req, res) => {
-  const { q = '', sic = '', location = '', days = '60', size = '50' } = req.query;
-
-  try {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - parseInt(days));
-    const query = q || location || 'services';
-
-    const items = await fetchKeyword(query, cutoff, sic, location);
-    console.log(`Single search "${query}": ${items.length} results`);
-
-    const companies = mapAndScore(items, parseInt(size));
-    res.json({ total: companies.length, api_total: items.length, companies });
-
-  } catch (err) {
-    console.error('Search error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── BULK SEARCH (all keywords at once) ───────────────────────
-app.get('/api/bulk-search', async (req, res) => {
-  const { sic = '', location = '', days = '60', size = '200', group = 'all' } = req.query;
-
-  try {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - parseInt(days));
-
-    // Pick keyword list
-    let keywords = [];
-    if (group === 'all') {
-      keywords = Object.values(KEYWORD_GROUPS).flat();
-    } else if (KEYWORD_GROUPS[group]) {
-      keywords = KEYWORD_GROUPS[group];
-    } else {
-      keywords = Object.values(KEYWORD_GROUPS).flat();
-    }
-
-    console.log(`Bulk search: ${keywords.length} keywords, cutoff: ${cutoff.toISOString().slice(0,10)}`);
-
-    // Run all keywords in parallel (batches of 5 to avoid rate limits)
-    const allItems = [];
-    const seen = new Set();
-    const batchSize = 5;
-
-    for (let i = 0; i < keywords.length; i += batchSize) {
-      const batch = keywords.slice(i, i + batchSize);
-      const results = await Promise.all(batch.map(kw => fetchKeyword(kw, cutoff, sic, location)));
-      for (const items of results) {
-        for (const item of items) {
-          if (!seen.has(item.company_number)) {
-            seen.add(item.company_number);
-            allItems.push(item);
-          }
-        }
-      }
-      // Small delay between batches to be respectful of rate limits
-      if (i + batchSize < keywords.length) await new Promise(r => setTimeout(r, 300));
-    }
-
-    console.log(`Bulk: ${allItems.length} unique companies found`);
-
-    const companies = mapAndScore(allItems, parseInt(size));
-    res.json({ total: companies.length, api_total: allItems.length, companies, keywords_searched: keywords.length });
-
-  } catch (err) {
-    console.error('Bulk search error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ── MAP + SCORE HELPER ────────────────────────────────────────
 function mapAndScore(items, limit = 200) {
-  return items.map(c => {
+  // Deduplicate by company number
+  const seen = new Set();
+  const unique = items.filter(c => {
+    const num = c.company_number;
+    if (seen.has(num)) return false;
+    seen.add(num);
+    return true;
+  });
+
+  return unique.map(c => {
     const base = {
       number: c.company_number,
-      name: c.title || c.company_name || '',
+      name: c.company_name || c.title || '',
       incorporated: c.date_of_creation,
       postcode: c.registered_office_address?.postal_code || '',
       city: c.registered_office_address?.locality || c.registered_office_address?.region || '',
@@ -414,6 +347,88 @@ function mapAndScore(items, limit = 200) {
     return { ...base, score, signals, status };
   }).sort((a, b) => b.score - a.score).slice(0, limit);
 }
+
+// ── SEARCH (single keyword or filter) ────────────────────────
+app.get('/api/search', async (req, res) => {
+  const { q = '', sic = '', location = '', days = '60', size = '50' } = req.query;
+
+  try {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - parseInt(days));
+    const incorporatedFrom = cutoff.toISOString().slice(0, 10);
+    const incorporatedTo = new Date().toISOString().slice(0, 10);
+
+    const items = await advancedSearch({
+      nameIncludes: q,
+      location,
+      sic,
+      incorporatedFrom,
+      incorporatedTo,
+      size: parseInt(size)
+    });
+
+    const companies = mapAndScore(items, parseInt(size));
+    res.json({ total: companies.length, api_total: items.length, companies });
+
+  } catch (err) {
+    console.error('Search error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── BULK SEARCH (keyword sweep) ───────────────────────────────
+app.get('/api/bulk-search', async (req, res) => {
+  const { sic = '', location = '', days = '60', size = '200', group = 'all' } = req.query;
+
+  try {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - parseInt(days));
+    const incorporatedFrom = cutoff.toISOString().slice(0, 10);
+    const incorporatedTo = new Date().toISOString().slice(0, 10);
+
+    // First: get ALL new companies in the date range (no keyword filter)
+    // This is the most powerful approach — returns everything new
+    const allNew = await advancedSearch({
+      location,
+      sic,
+      incorporatedFrom,
+      incorporatedTo,
+      size: 2000  // Advanced search supports up to 5000
+    });
+
+    console.log(`Bulk: ${allNew.length} total new companies in last ${days} days`);
+
+    // If a keyword group is selected, also do keyword sweeps to supplement
+    let extra = [];
+    if (group !== 'all' && KEYWORD_GROUPS[group]) {
+      const keywords = KEYWORD_GROUPS[group];
+      const batchSize = 5;
+      for (let i = 0; i < keywords.length; i += batchSize) {
+        const batch = keywords.slice(i, i + batchSize);
+        const results = await Promise.all(batch.map(kw =>
+          advancedSearch({ nameIncludes: kw, location, sic, incorporatedFrom, incorporatedTo, size: 100 }).catch(() => [])
+        ));
+        extra = extra.concat(results.flat());
+        if (i + batchSize < keywords.length) await new Promise(r => setTimeout(r, 200));
+      }
+    }
+
+    const combined = [...allNew, ...extra];
+    const companies = mapAndScore(combined, parseInt(size));
+    console.log(`Bulk returning ${companies.length} unique scored leads`);
+
+    res.json({
+      total: companies.length,
+      api_total: combined.length,
+      companies,
+      keywords_searched: group === 'all' ? 1 : (KEYWORD_GROUPS[group] || []).length + 1
+    });
+
+  } catch (err) {
+    console.error('Bulk search error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Get single company details + director
 app.get('/api/company/:number', async (req, res) => {
