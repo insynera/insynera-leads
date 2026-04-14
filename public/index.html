@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INSYNERA — Lead Capture System</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080b10;--bg2:#0d1117;--bg3:#131920;--bg4:#1a2230;
+  --accent:#2563eb;--accent2:#3b82f6;--accent-glow:rgba(37,99,235,0.18);
+  --green:#10b981;--green-dim:rgba(16,185,129,0.12);
+  --amber:#f59e0b;--amber-dim:rgba(245,158,11,0.12);
+  --red:#ef4444;--red-dim:rgba(239,68,68,0.12);
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+  --text:#e2e8f0;--muted:#64748b;--muted2:#94a3b8;
+  --heading:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;--body:'DM Sans',sans-serif;
+}
+body{font-family:var(--body);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;z-index:0;background-image:linear-gradient(rgba(37,99,235,0.035) 1px,transparent 1px),linear-gradient(90deg,rgba(37,99,235,0.035) 1px,transparent 1px);background-size:44px 44px;pointer-events:none}
+.app{position:relative;z-index:1;display:flex;flex-direction:column;min-height:100vh}
+
+/* HEADER */
+header{border-bottom:1px solid var(--border);background:rgba(8,11,16,0.95);backdrop-filter:blur(16px);position:sticky;top:0;z-index:50;padding:0 32px}
+.hdr{display:flex;align-items:center;justify-content:space-between;height:58px;max-width:1440px;margin:0 auto}
+.logo{font-family:var(--heading);font-size:1.05rem;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#fff}
+.logo em{color:var(--accent2);font-style:normal}
+.logo small{font-weight:400;opacity:0.35;font-size:0.65rem;letter-spacing:0.05em;margin-left:8px}
+.hdr-right{display:flex;align-items:center;gap:14px}
+.pill{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--muted2)}
+.pill b{color:#fff}
+.live{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;color:var(--green);background:var(--green-dim);border:1px solid rgba(16,185,129,0.2);padding:4px 10px;border-radius:4px}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 1.4s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.25}}
+.status-offline{color:var(--red);background:var(--red-dim);border-color:rgba(239,68,68,0.2)}
+
+/* MAIN */
+main{flex:1;max-width:1440px;margin:0 auto;width:100%;padding:28px 32px;display:flex;flex-direction:column;gap:20px}
+
+/* PANELS */
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;position:relative}
+.panel-top{position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent)}
+
+/* SEARCH */
+.search-panel{padding:26px 28px}
+.search-label{font-family:var(--heading);font-size:1.3rem;font-weight:700;color:#fff;margin-bottom:4px}
+.search-sub{font-size:13px;color:var(--muted);margin-bottom:22px}
+.search-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.fg{display:flex;flex-direction:column;gap:5px;flex:1;min-width:160px}
+.fg label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-family:var(--mono)}
+.fg input,.fg select{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 13px;font-family:var(--body);font-size:13.5px;color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s;height:42px}
+.fg input:focus,.fg select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,0.13)}
+.fg input::placeholder{color:var(--muted)}
+.fg select option{background:var(--bg)}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:0 22px;height:42px;border-radius:8px;font-family:var(--heading);font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:none;transition:all .2s;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#1d4ed8;transform:translateY(-1px);box-shadow:0 5px 18px rgba(37,99,235,0.4)}
+.btn-primary:disabled{opacity:0.45;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-ghost{background:transparent;color:var(--muted2);border:1px solid var(--border2)}
+.btn-ghost:hover{border-color:var(--accent2);color:var(--accent2)}
+.progress{height:2px;background:var(--border);border-radius:1px;margin-top:16px;display:none;overflow:hidden}
+.progress-inner{height:100%;background:var(--accent);border-radius:1px;transition:width .35s ease;width:0}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden}
+.stat::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px}
+.stat.s-total::after{background:var(--accent)}
+.stat.s-hot::after{background:var(--red)}
+.stat.s-warm::after{background:var(--amber)}
+.stat.s-cold::after{background:var(--muted)}
+.stat-n{font-family:var(--heading);font-size:2rem;font-weight:800;color:#fff;line-height:1}
+.stat-l{font-size:11px;color:var(--muted);margin-top:5px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em}
+.stat-tag{position:absolute;top:16px;right:16px;font-size:10px;font-family:var(--mono);padding:3px 7px;border-radius:3px;font-weight:600}
+.s-hot .stat-tag{background:var(--red-dim);color:var(--red)}
+.s-warm .stat-tag{background:var(--amber-dim);color:var(--amber)}
+
+/* TABLE PANEL */
+.tbl-hdr{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.tbl-title{font-family:var(--heading);font-size:.9rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.07em}
+.tbl-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ftabs{display:flex;gap:3px}
+.ft{padding:5px 11px;border-radius:5px;font-size:11px;font-family:var(--mono);cursor:pointer;border:1px solid transparent;transition:all .18s;font-weight:500;color:var(--muted);background:transparent;text-transform:uppercase;letter-spacing:.06em}
+.ft:hover{color:var(--text)}
+.ft.on{background:var(--bg4);border-color:var(--border2);color:#fff}
+.ft.on.fhot{background:var(--red-dim);border-color:rgba(239,68,68,.3);color:var(--red)}
+.ft.on.fwarm{background:var(--amber-dim);border-color:rgba(245,158,11,.3);color:var(--amber)}
+.btn-sm{padding:5px 12px;height:32px;font-size:11px}
+
+/* TABLE */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+thead tr{border-bottom:1px solid var(--border)}
+th{padding:10px 14px;text-align:left;font-family:var(--mono);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);white-space:nowrap}
+tbody tr{border-bottom:1px solid rgba(255,255,255,0.035);transition:background .14s;cursor:pointer}
+tbody tr:hover{background:var(--bg3)}
+tbody tr:last-child{border-bottom:none}
+td{padding:12px 14px;vertical-align:middle}
+.cn{font-weight:600;color:#fff;font-size:13px;display:block}
+.cnum{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:1px}
+.sic-b{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:600;font-family:var(--mono);background:var(--bg4);border:1px solid var(--border2);color:var(--muted2);white-space:nowrap}
+.bar-row{display:flex;align-items:center;gap:7px}
+.bar-w{flex:1;height:3px;background:var(--bg4);border-radius:2px;min-width:50px}
+.bar-f{height:100%;border-radius:2px}
+.snum{font-family:var(--mono);font-size:11px;font-weight:500;min-width:24px}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:4px;font-size:10px;font-weight:700;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.b-hot{background:var(--red-dim);color:var(--red);border:1px solid rgba(239,68,68,.25)}
+.b-warm{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(245,158,11,.25)}
+.b-cold{background:rgba(100,116,139,.08);color:var(--muted2);border:1px solid rgba(100,116,139,.2)}
+.bdot{width:4px;height:4px;border-radius:50%;background:currentColor}
+.sigs{display:flex;gap:3px;flex-wrap:wrap}
+.sig{width:32px;height:22px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;font-family:var(--mono);cursor:default}
+.sig.on{background:var(--red-dim);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.sig.off{background:var(--bg4);color:var(--muted);border:1px solid var(--border)}
+.acts{display:flex;gap:5px}
+.ab{padding:4px 9px;border-radius:4px;font-size:10px;font-family:var(--mono);font-weight:600;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;border:1px solid;transition:all .17s;white-space:nowrap}
+.a-email{background:var(--accent-glow);border-color:rgba(37,99,235,.3);color:var(--accent2)}
+.a-email:hover{background:rgba(37,99,235,.22)}
+.a-call{background:var(--green-dim);border-color:rgba(16,185,129,.3);color:var(--green)}
+.a-call:hover{background:rgba(16,185,129,.2)}
+.a-save{background:var(--bg4);border-color:var(--border2);color:var(--muted2)}
+.a-save:hover{border-color:var(--accent2);color:var(--accent2)}
+
+/* EMPTY / LOADING */
+.empty{padding:70px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px}
+.empty-ico{font-size:2.5rem;opacity:.25}
+.empty-t{font-family:var(--heading);font-size:1.1rem;color:var(--muted2);font-weight:700;text-transform:uppercase}
+.empty-s{font-size:13px;color:var(--muted);max-width:340px;line-height:1.65}
+.loading{padding:56px 24px;text-align:center;display:none;flex-direction:column;align-items:center;gap:14px}
+.loading.show{display:flex}
+.spin{width:34px;height:34px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-t{font-family:var(--mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+.load-steps{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+.load-s{font-size:11px;color:var(--muted);font-family:var(--mono);opacity:0;transition:opacity .3s}
+.load-s.vis{opacity:1}
+
+/* MODAL */
+.overlay{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.75);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;padding:20px}
+.overlay.open{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:660px;max-height:92vh;overflow-y:auto;animation:su .22s ease}
+@keyframes su{from{transform:translateY(18px);opacity:0}to{transform:none;opacity:1}}
+.mod-hdr{padding:22px 26px 18px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.mod-close{width:30px;height:30px;border-radius:5px;background:var(--bg4);border:1px solid var(--border2);color:var(--muted2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;transition:all .2s}
+.mod-close:hover{border-color:var(--accent);color:var(--accent2)}
+.mod-body{padding:22px 26px;display:flex;flex-direction:column;gap:18px}
+.sec-t{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:10px}
+.dg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.df{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:11px 13px}
+.df-l{font-size:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:3px}
+.df-v{font-size:13px;color:#fff;font-weight:500;word-break:break-all}
+.df-v.lnk{color:var(--accent2);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.email-box{background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:16px 18px}
+.email-subj{font-family:var(--mono);font-size:11px;color:var(--muted2);margin-bottom:8px}
+.email-subj span{color:#fff;font-weight:500}
+.email-bod{font-size:13px;color:var(--text);line-height:1.8;white-space:pre-wrap}
+.btn-gen{width:100%;padding:11px;background:var(--accent-glow);border:1px solid rgba(37,99,235,.3);border-radius:7px;color:var(--accent2);font-family:var(--mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;transition:all .2s}
+.btn-gen:hover{background:rgba(37,99,235,.22)}
+.btn-gen:disabled{opacity:.5;cursor:not-allowed}
+.mod-acts{display:flex;gap:8px}
+.ma{flex:1;padding:11px;border-radius:7px;font-family:var(--mono);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;border:1px solid;transition:all .2s;text-align:center}
+.ma-email{background:var(--accent);border-color:var(--accent);color:#fff}
+.ma-email:hover{background:#1d4ed8}
+.ma-call{background:var(--green-dim);border-color:rgba(16,185,129,.4);color:var(--green)}
+.ma-call:hover{background:rgba(16,185,129,.18)}
+.ma-ch{background:var(--bg4);border-color:var(--border2);color:var(--muted2)}
+.ma-ch:hover{border-color:var(--accent2);color:var(--accent2)}
+.loading-detail{display:flex;align-items:center;justify-content:center;gap:10px;padding:30px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+
+/* TOAST */
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--bg3);border:1px solid var(--border2);border-radius:7px;padding:11px 18px;font-size:12px;font-family:var(--mono);color:var(--text);z-index:300;transition:transform .28s ease;white-space:nowrap;pointer-events:none}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.ok{border-color:rgba(16,185,129,.4);color:var(--green)}
+.toast.err{border-color:rgba(239,68,68,.4);color:var(--red)}
+
+/* SAVED */
+.saved-panel{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px 22px}
+.saved-t{font-family:var(--heading);font-size:.85rem;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px}
+.saved-list{display:flex;flex-direction:column;gap:7px}
+.si{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:11px 13px;cursor:pointer;transition:border-color .2s}
+.si:hover{border-color:var(--accent2)}
+.si-name{font-size:13px;font-weight:600;color:#fff}
+.si-meta{font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:2px}
+
+@media(max-width:900px){main{padding:18px 14px}.stats{grid-template-columns:repeat(2,1fr)}header{padding:0 14px}}
+@media(max-width:600px){.dg{grid-template-columns:1fr}.mod-acts{flex-direction:column}.search-row{flex-direction:column}.btn{width:100%;justify-content:center}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="hdr">
+    <div class="logo">INSY<em>NERA</em><small>// LEAD SYSTEM v2</small></div>
+    <div class="hdr-right">
+      <div id="server-status" class="live"><div class="dot"></div><span>CONNECTING...</span></div>
+      <div class="pill">Saved: <b id="saved-count">0</b></div>
+      <div class="pill">Found: <b id="session-count">0</b></div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- SEARCH -->
+  <div class="panel search-panel">
+    <div class="panel-top"></div>
+    <div class="search-label">Find New UK Companies That Need a Website</div>
+    <div class="search-sub">Searches live Companies House data — real incorporations, real directors, free source.</div>
+    <div class="search-row">
+      <div class="fg" style="flex:2;min-width:200px">
+        <label>Keyword / Company Name</label>
+        <input id="q-kw" type="text" placeholder="e.g. plumbing, hair, cafe, builders..." />
+      </div>
+      <div class="fg">
+        <label>Industry (SIC)</label>
+        <select id="q-sic">
+          <option value="">All Industries</option>
+          <option value="43">Construction & Trades</option>
+          <option value="56">Restaurants & Food</option>
+          <option value="9602">Hair & Beauty</option>
+          <option value="47">Retail</option>
+          <option value="86">Health Services</option>
+          <option value="55">Hotels & B&Bs</option>
+          <option value="93">Sports & Leisure</option>
+          <option value="9609">Personal Services</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Location / Postcode</label>
+        <input id="q-loc" type="text" placeholder="e.g. Cardiff, NP10, Bristol..." />
+      </div>
+      <div class="fg" style="min-width:120px;max-width:130px">
+        <label>Incorporated Within</label>
+        <select id="q-days">
+          <option value="7">7 days</option>
+          <option value="14" selected>14 days</option>
+          <option value="30">30 days</option>
+          <option value="60">60 days</option>
+        </select>
+      </div>
+      <div class="fg" style="min-width:110px;max-width:120px">
+        <label>Results</label>
+        <select id="q-size">
+          <option value="20">20</option>
+          <option value="30" selected>30</option>
+          <option value="50">50</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:7px;align-items:flex-end;flex-shrink:0">
+        <button class="btn btn-primary" id="search-btn" onclick="runSearch()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Search
+        </button>
+        <button class="btn btn-ghost" onclick="clearResults()">Clear</button>
+      </div>
+    </div>
+    <div class="progress" id="progress"><div class="progress-inner" id="prog-inner"></div></div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats" id="stats" style="display:none">
+    <div class="stat s-total"><div class="stat-n" id="s-total">0</div><div class="stat-l">Total Found</div></div>
+    <div class="stat s-hot"><div class="stat-n" id="s-hot">0</div><div class="stat-l">Hot Leads</div><div class="stat-tag">Priority</div></div>
+    <div class="stat s-warm"><div class="stat-n" id="s-warm">0</div><div class="stat-l">Warm Leads</div><div class="stat-tag">Follow up</div></div>
+    <div class="stat s-cold"><div class="stat-n" id="s-cold">0</div><div class="stat-l">Cold / Skip</div></div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="panel" id="tbl-panel">
+    <div class="tbl-hdr">
+      <div class="tbl-title">Lead Pipeline</div>
+      <div class="tbl-actions">
+        <div class="ftabs">
+          <button class="ft on" onclick="setFilter('all',this)">All</button>
+          <button class="ft fhot" onclick="setFilter('hot',this)">🔴 Hot</button>
+          <button class="ft fwarm" onclick="setFilter('warm',this)">🟡 Warm</button>
+          <button class="ft" onclick="setFilter('cold',this)">⚪ Cold</button>
+          <button class="ft" onclick="setFilter('saved',this)">⭐ Saved</button>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="exportCSV()">↓ CSV</button>
+      </div>
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="spin"></div>
+      <div class="load-t" id="load-t">Searching Companies House...</div>
+      <div class="load-steps" id="load-steps"></div>
+    </div>
+
+    <div class="empty" id="empty">
+      <div class="empty-ico">🔍</div>
+      <div class="empty-t">No Leads Yet</div>
+      <div class="empty-s">Search above to find newly incorporated UK companies. Every result is a real company that almost certainly has no website yet.</div>
+    </div>
+
+    <div class="tw" id="tw" style="display:none">
+      <table>
+        <thead>
+          <tr>
+            <th>Company</th>
+            <th>Industry</th>
+            <th>Location</th>
+            <th>Incorporated</th>
+            <th>Score</th>
+            <th>Status</th>
+            <th>Signals</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SAVED -->
+  <div class="saved-panel" id="saved-panel" style="display:none">
+    <div class="saved-t">⭐ Saved Leads (<span id="sp-count">0</span>)</div>
+    <div class="saved-list" id="saved-list"></div>
+  </div>
+
+</main>
+</div>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay" onclick="maybeClose(event)">
+  <div class="modal" id="modal">
+    <div class="mod-hdr">
+      <div>
+        <div style="font-family:var(--heading);font-size:1.25rem;font-weight:800;color:#fff" id="m-name"></div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px" id="m-meta"></div>
+      </div>
+      <button class="mod-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="mod-body" id="mod-body">
+      <div class="loading-detail"><div class="spin"></div><span>Loading company details...</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';  // empty = same origin (served by Express)
+
+let allLeads = [];
+let curFilter = 'all';
+let curLead = null;
+let saved = JSON.parse(localStorage.getItem('ins_saved') || '[]');
+
+// ── SERVER STATUS ──────────────────────────────────────────
+async function checkServer() {
+  try {
+    const r = await fetch(`${API}/api/health`);
+    if (r.ok) {
+      const d = await r.json();
+      const el = document.getElementById('server-status');
+      el.innerHTML = '<div class="dot"></div><span>LIVE</span>';
+      el.className = 'live';
+    }
+  } catch {
+    const el = document.getElementById('server-status');
+    el.innerHTML = '<div class="dot" style="background:var(--red)"></div><span>SERVER OFFLINE</span>';
+    el.className = 'live status-offline';
+  }
+}
+checkServer();
+setInterval(checkServer, 30000);
+
+// ── SEARCH ────────────────────────────────────────────────
+async function runSearch() {
+  const kw = document.getElementById('q-kw').value.trim();
+  const sic = document.getElementById('q-sic').value;
+  const loc = document.getElementById('q-loc').value.trim();
+  const days = document.getElementById('q-days').value;
+  const size = document.getElementById('q-size').value;
+
+  showLoading();
+  stepMsg('Connecting to Companies House API...');
+
+  const params = new URLSearchParams({ q: kw || 'limited', sic, location: loc, days, size });
+
+  try {
+    await sleep(300);
+    stepMsg('Applying filters...');
+    const r = await fetch(`${API}/api/search?${params}`);
+
+    if (!r.ok) {
+      const err = await r.json();
+      throw new Error(err.error || 'Search failed');
+    }
+
+    stepMsg('Scoring leads...');
+    await sleep(200);
+    const data = await r.json();
+    stepMsg(`Found ${data.total} leads. Sorting by score...`);
+    await sleep(150);
+
+    allLeads = data.companies.map(c => ({
+      ...c,
+      isSaved: saved.some(s => s.number === c.number)
+    }));
+
+    hideLoading();
+    renderTable(filtered());
+    updateStats();
+    document.getElementById('session-count').textContent = allLeads.length;
+    toast(`Found ${allLeads.length} leads`, 'ok');
+
+  } catch (err) {
+    hideLoading();
+    toast(err.message, 'err');
+    showEmpty(`Error: ${err.message}`, 'Check that the backend server is running and your API key is valid.');
+  }
+}
+
+function filtered() {
+  if (curFilter === 'all') return allLeads;
+  if (curFilter === 'saved') return allLeads.filter(l => saved.some(s => s.number === l.number));
+  return allLeads.filter(l => l.status === curFilter);
+}
+
+// ── TABLE ─────────────────────────────────────────────────
+function renderTable(leads) {
+  const tbody = document.getElementById('tbody');
+  const tw = document.getElementById('tw');
+  const empty = document.getElementById('empty');
+
+  if (!leads.length) {
+    tw.style.display = 'none';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+  tw.style.display = 'block';
+
+  tbody.innerHTML = leads.map(l => {
+    const bc = l.status === 'hot' ? '#ef4444' : l.status === 'warm' ? '#f59e0b' : '#64748b';
+    const bclass = `b-${l.status}`;
+    const isSv = saved.some(s => s.number === l.number);
+    const days = daysSince(l.incorporated);
+    return `<tr onclick="openDetail('${l.number}')">
+      <td><span class="cn">${l.name}</span><span class="cnum">${l.number}</span></td>
+      <td><span class="sic-b">${l.industry || 'General'}</span></td>
+      <td style="font-size:12px;color:var(--muted2)">${l.city || '—'}<br><span style="font-size:10px;font-family:var(--mono);color:var(--muted)">${l.postcode || ''}</span></td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted2)">${fmtDate(l.incorporated)}<br><span style="color:var(--muted);font-size:10px">${days}d ago</span></td>
+      <td><div class="bar-row"><div class="bar-w"><div class="bar-f" style="width:${l.score}%;background:${bc}"></div></div><span class="snum" style="color:${bc}">${l.score}</span></div></td>
+      <td><span class="badge ${bclass}"><span class="bdot"></span>${l.status.toUpperCase()}</span></td>
+      <td><div class="sigs">${(l.signals||[]).map(s=>`<div class="sig ${s.on?'on':'off'}" title="${s.title}">${s.key}</div>`).join('')}</div></td>
+      <td onclick="event.stopPropagation()"><div class="acts">
+        <button class="ab a-email" onclick="quickEmail('${l.number}')">Email</button>
+        <button class="ab a-call" onclick="quickCH('${l.number}')">CH ↗</button>
+        <button class="ab a-save" onclick="toggleSave('${l.number}')">${isSv?'★':'☆'}</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── DETAIL MODAL ──────────────────────────────────────────
+async function openDetail(num) {
+  const overlay = document.getElementById('overlay');
+  const body = document.getElementById('mod-body');
+  const mName = document.getElementById('m-name');
+  const mMeta = document.getElementById('m-meta');
+
+  // Show loading state immediately
+  const preview = allLeads.find(l => l.number === num);
+  mName.textContent = preview?.name || 'Loading...';
+  mMeta.textContent = preview ? `${preview.number} · ${preview.industry} · ${preview.city}` : '';
+  body.innerHTML = '<div class="loading-detail"><div class="spin"></div><span style="font-family:var(--mono);font-size:12px;color:var(--muted)">Fetching director details...</span></div>';
+  overlay.classList.add('open');
+
+  try {
+    const r = await fetch(`${API}/api/company/${num}`);
+    if (!r.ok) throw new Error('Failed to load company');
+    const c = await r.json();
+    curLead = c;
+
+    // Update header
+    mName.textContent = c.name;
+    mMeta.textContent = `${c.number} · ${c.industry} · ${c.city}`;
+
+    // Update lead in allLeads with director
+    const idx = allLeads.findIndex(l => l.number === num);
+    if (idx !== -1) allLeads[idx].director_name = c.director_name;
+
+    body.innerHTML = `
+      <div>
+        <div class="sec-t">Company Details</div>
+        <div class="dg">
+          <div class="df"><div class="df-l">Company Number</div><div class="df-v">${c.number}</div></div>
+          <div class="df"><div class="df-l">Incorporated</div><div class="df-v">${fmtDate(c.incorporated)} <span style="color:var(--muted);font-size:11px">(${daysSince(c.incorporated)} days ago)</span></div></div>
+          <div class="df"><div class="df-l">City</div><div class="df-v">${c.city || '—'}</div></div>
+          <div class="df"><div class="df-l">Postcode</div><div class="df-v">${c.postcode || '—'}</div></div>
+          <div class="df"><div class="df-l">Industry</div><div class="df-v">${c.industry}</div></div>
+          <div class="df"><div class="df-l">SIC Codes</div><div class="df-v" style="font-family:var(--mono);font-size:11px">${(c.sic_codes||[]).join(', ') || '—'}</div></div>
+          <div class="df"><div class="df-l">Director</div><div class="df-v" style="color:${c.director_name?'var(--green)':'var(--muted)'}">${c.director_name || 'Not found — check Companies House'}</div></div>
+          <div class="df"><div class="df-l">Lead Score</div><div class="df-v" style="color:${c.status==='hot'?'var(--red)':c.status==='warm'?'var(--amber)':'var(--muted2)'}">${c.score}/100 — ${(c.status||'').toUpperCase()}</div></div>
+          <div class="df" style="grid-column:span 2"><div class="df-l">Companies House</div><div class="df-v lnk" onclick="window.open('https://find-and-update.company-information.service.gov.uk/company/${c.number}','_blank')">View full profile ↗</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="sec-t">Website Signals</div>
+        <div style="display:flex;flex-direction:column;gap:7px" id="sig-list">
+          ${(c.signals||[]).map(s=>`
+            <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid ${s.on?'rgba(239,68,68,0.2)':'var(--border)'};border-radius:6px;padding:8px 12px;font-size:12px">
+              <span style="color:${s.on?'var(--red)':'var(--muted)'}">●</span>
+              <span style="color:${s.on?'var(--text)':'var(--muted)'};font-family:var(--mono)">${s.title}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div>
+        <div class="sec-t">Outreach Email</div>
+        <div class="email-box" id="email-box">
+          ${c.email_template ? renderEmailPreview(c.email_template) : '<div style="font-size:12px;color:var(--muted);font-family:var(--mono)">Click below to generate a personalised email.</div>'}
+        </div>
+        <button class="btn-gen" id="btn-gen" onclick="generateEmail()" style="margin-top:8px">
+          ${c.email_template ? '↻ Regenerate Email' : '✦ Generate Personalised Email'}
+        </button>
+      </div>
+      <div>
+        <div class="sec-t">Actions</div>
+        <div class="mod-acts">
+          <button class="ma ma-email" onclick="copyEmailText()">Copy Email</button>
+          <button class="ma ma-call" onclick="window.open('https://find-and-update.company-information.service.gov.uk/company/${c.number}/officers','_blank')">Find Director ↗</button>
+          <button class="ma ma-ch" onclick="window.open('https://find-and-update.company-information.service.gov.uk/company/${c.number}','_blank')">Companies House ↗</button>
+        </div>
+      </div>
+    `;
+  } catch(err) {
+    body.innerHTML = `<div style="padding:30px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--red)">Error: ${err.message}</div>`;
+  }
+}
+
+function renderEmailPreview(t) {
+  return `<div class="email-subj">Subject: <span>${t.subject}</span></div><div class="email-bod">${t.body}</div>`;
+}
+
+async function generateEmail() {
+  if (!curLead) return;
+  const btn = document.getElementById('btn-gen');
+  if (!btn) return;
+  btn.disabled = true; btn.textContent = '⟳ Generating...';
+  try {
+    const r = await fetch(`${API}/api/email`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ company: curLead })
+    });
+    const t = await r.json();
+    curLead.email_template = t;
+    const box = document.getElementById('email-box');
+    if (box) box.innerHTML = renderEmailPreview(t);
+    btn.textContent = '↻ Regenerate Email';
+  } catch(e) {
+    toast('Email generation failed', 'err');
+  }
+  btn.disabled = false;
+}
+
+function copyEmailText() {
+  if (!curLead?.email_template) { toast('Generate the email first'); return; }
+  const t = curLead.email_template;
+  navigator.clipboard.writeText(`Subject: ${t.subject}\n\n${t.body}`)
+    .then(() => toast('Email copied!', 'ok'));
+}
+
+function closeModal() {
+  document.getElementById('overlay').classList.remove('open');
+  curLead = null;
+}
+function maybeClose(e) { if (e.target === document.getElementById('overlay')) closeModal(); }
+
+function quickEmail(num) { openDetail(num); }
+function quickCH(num) { window.open(`https://find-and-update.company-information.service.gov.uk/company/${num}`, '_blank'); }
+
+// ── SAVE ────────────────────────────────────────────────
+function toggleSave(num) {
+  const lead = allLeads.find(l => l.number === num);
+  if (!lead) return;
+  const idx = saved.findIndex(s => s.number === num);
+  if (idx === -1) {
+    saved.push({ number:num, name:lead.name, city:lead.city, industry:lead.industry, status:lead.status, score:lead.score });
+    toast(`Saved: ${lead.name}`, 'ok');
+  } else {
+    saved.splice(idx, 1);
+    toast('Lead removed');
+  }
+  localStorage.setItem('ins_saved', JSON.stringify(saved));
+  updateSavedUI();
+  renderTable(filtered());
+}
+
+function updateSavedUI() {
+  document.getElementById('saved-count').textContent = saved.length;
+  document.getElementById('sp-count').textContent = saved.length;
+  const panel = document.getElementById('saved-panel');
+  const list = document.getElementById('saved-list');
+  if (!saved.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  list.innerHTML = saved.map(s => `
+    <div class="si" onclick="openDetail('${s.number}')">
+      <div><div class="si-name">${s.name}</div><div class="si-meta">${s.city} · ${s.industry} · Score: ${s.score}</div></div>
+      <span class="badge b-${s.status}" style="font-size:10px;padding:3px 8px"><span class="bdot"></span>${s.status.toUpperCase()}</span>
+    </div>`).join('');
+}
+
+// ── FILTERS / STATS ───────────────────────────────────────
+function setFilter(f, el) {
+  curFilter = f;
+  document.querySelectorAll('.ft').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+  renderTable(filtered());
+}
+
+function updateStats() {
+  document.getElementById('stats').style.display = 'grid';
+  document.getElementById('s-total').textContent = allLeads.length;
+  document.getElementById('s-hot').textContent = allLeads.filter(l=>l.status==='hot').length;
+  document.getElementById('s-warm').textContent = allLeads.filter(l=>l.status==='warm').length;
+  document.getElementById('s-cold').textContent = allLeads.filter(l=>l.status==='cold').length;
+}
+
+// ── EXPORT ────────────────────────────────────────────────
+async function exportCSV() {
+  const leads = filtered();
+  if (!leads.length) { toast('No leads to export'); return; }
+  try {
+    const r = await fetch(`${API}/api/export`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ leads })
+    });
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `insynera-leads-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    toast(`Exported ${leads.length} leads`, 'ok');
+  } catch(e) {
+    toast('Export failed', 'err');
+  }
+}
+
+// ── LOADING ────────────────────────────────────────────────
+function showLoading() {
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('tw').style.display = 'none';
+  document.getElementById('stats').style.display = 'none';
+  document.getElementById('search-btn').disabled = true;
+  document.getElementById('progress').style.display = 'block';
+  document.getElementById('load-steps').innerHTML = '';
+  animateProgress();
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('show');
+  document.getElementById('search-btn').disabled = false;
+  document.getElementById('progress').style.display = 'none';
+  document.getElementById('prog-inner').style.width = '0';
+}
+async function animateProgress() {
+  const el = document.getElementById('prog-inner');
+  for (const p of [10,30,55,75,92]) { el.style.width = p+'%'; await sleep(320); }
+}
+let stepIdx = 0;
+async function stepMsg(msg) {
+  const c = document.getElementById('load-steps');
+  const el = document.createElement('div');
+  el.className = 'load-s';
+  el.textContent = '→ ' + msg;
+  c.appendChild(el);
+  await sleep(20);
+  el.classList.add('vis');
+}
+function showEmpty(title, sub) {
+  document.getElementById('empty').style.display = 'flex';
+  document.getElementById('empty').querySelector('.empty-t').textContent = title;
+  document.getElementById('empty').querySelector('.empty-s').textContent = sub;
+}
+function clearResults() {
+  allLeads = [];
+  document.getElementById('tw').style.display = 'none';
+  document.getElementById('empty').style.display = 'flex';
+  document.getElementById('stats').style.display = 'none';
+  document.getElementById('empty').querySelector('.empty-t').textContent = 'No Leads Yet';
+  document.getElementById('empty').querySelector('.empty-s').textContent = 'Search above to find newly incorporated UK companies.';
+  document.getElementById('session-count').textContent = '0';
+}
+
+// ── TOAST ──────────────────────────────────────────────────
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + type;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ── UTILS ──────────────────────────────────────────────────
+function daysSince(d) { if (!d) return '?'; return Math.floor((Date.now() - new Date(d)) / 86400000); }
+function fmtDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── INIT ───────────────────────────────────────────────────
+updateSavedUI();
+</script>
+</body>
+</html>
