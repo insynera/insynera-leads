@@ -294,52 +294,44 @@ app.get('/api/search', async (req, res) => {
     sic = '',
     location = '',
     days = '30',
-    size = '20',
+    size = '50',
     start_index = '0'
   } = req.query;
 
   try {
-    // Build search query
-    let query = q || '*';
-    if (location) query += ` ${location}`;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - parseInt(days));
+    const incorporatedFrom = cutoff.toISOString().slice(0, 10);
+    const incorporatedTo = new Date().toISOString().slice(0, 10);
 
+    // Use advanced search — supports date range filtering directly
     const params = new URLSearchParams({
-      q: query,
-      items_per_page: Math.min(parseInt(size), 50),
+      incorporated_from: incorporatedFrom,
+      incorporated_to: incorporatedTo,
+      company_status: 'active',
+      company_type: 'ltd',
+      items_per_page: Math.min(parseInt(size), 100),
       start_index: parseInt(start_index)
     });
 
-    const data = await chFetch(`/search/companies?${params}`);
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - parseInt(days));
+    // Add keyword if provided
+    if (q) params.set('company_name_includes', q);
 
-    // Filter and enrich results
-    let companies = (data.items || [])
-      .filter(c => {
-        // Only active limited companies
-        if (c.company_status !== 'active') return false;
-        if (!c.date_of_creation) return false;
-        // Within days range
-        if (new Date(c.date_of_creation) < cutoff) return false;
-        // SIC filter
-        if (sic) {
-          const sics = c.sic_codes || [];
-          if (!sics.some(s => s.startsWith(sic.slice(0, 4)))) return false;
-        }
-        // Location filter
-        if (location) {
-          const addr = JSON.stringify(c.registered_office_address || '').toLowerCase();
-          if (!addr.includes(location.toLowerCase())) return false;
-        }
-        return true;
-      });
+    // Add SIC code filter if provided
+    if (sic) params.set('sic_codes', sic);
 
-    // Score leads
-    companies = companies.map(c => {
+    // Add location if provided
+    if (location) params.set('location', location);
+
+    console.log(`Searching: /advanced-search/companies?${params}`);
+    const data = await chFetch(`/advanced-search/companies?${params}`);
+    console.log(`CH returned ${data.hits} total hits, ${(data.items||[]).length} items`);
+
+    let companies = (data.items || []).map(c => {
       const { score, signals, status } = scoreLead(c);
       return {
         number: c.company_number,
-        name: c.title,
+        name: c.company_name,
         incorporated: c.date_of_creation,
         postcode: c.registered_office_address?.postal_code || '',
         city: c.registered_office_address?.locality || c.registered_office_address?.region || '',
@@ -352,12 +344,13 @@ app.get('/api/search', async (req, res) => {
         score,
         signals,
         status,
-        director_name: null // fetched on demand
+        director_name: null
       };
     }).sort((a, b) => b.score - a.score);
 
     res.json({
       total: companies.length,
+      api_total: data.hits || companies.length,
       api_total: data.total_results,
       companies
     });
