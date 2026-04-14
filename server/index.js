@@ -287,96 +287,133 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', agency: AGENCY_NAME, timestamp: new Date().toISOString() });
 });
 
-// Search companies
-app.get('/api/search', async (req, res) => {
-  const {
-    q = '',
-    sic = '',
-    location = '',
-    days = '30',
-    size = '50',
-    start_index = '0'
-  } = req.query;
+// ── KEYWORD GROUPS ───────────────────────────────────────────
+const KEYWORD_GROUPS = {
+  trades: ['plumbing', 'electrical', 'roofing', 'heating', 'construction', 'building', 'drainage', 'joinery', 'plastering', 'groundworks'],
+  food: ['restaurant', 'cafe', 'catering', 'takeaway', 'kitchen', 'pizza', 'burger', 'bakery', 'coffee', 'bistro'],
+  beauty: ['hair', 'beauty', 'salon', 'aesthetics', 'nails', 'barber', 'lashes', 'brows', 'skincare', 'grooming'],
+  health: ['physio', 'therapy', 'dental', 'clinic', 'care', 'wellbeing', 'massage', 'nutrition', 'fitness', 'yoga'],
+  general: ['services', 'solutions', 'group', 'cleaning', 'logistics', 'media', 'tech', 'design', 'consulting', 'management'],
+};
 
+// ── HELPER: fetch one keyword ─────────────────────────────────
+async function fetchKeyword(keyword, cutoff, sic, location) {
   try {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - parseInt(days));
-
-    // Build query — keyword takes priority, fall back to location, then broad terms
-    const query = q || location || 'ltd';
-
-    // Fetch 3 pages (150 results) from CH search
-    let allItems = [];
-    for (let page = 0; page < 3; page++) {
-      const params = new URLSearchParams({
-        q: query,
-        items_per_page: 50,
-        start_index: page * 50
-      });
-      const data = await chFetch(`/search/companies?${params}`);
-      const items = data.items || [];
-      console.log(`Page ${page+1}: ${items.length} items, first date: ${items[0]?.date_of_creation}`);
-      allItems = allItems.concat(items);
-      if (items.length < 50) break;
-    }
-
-    console.log(`Fetched ${allItems.length} total. Date cutoff: ${cutoff.toISOString().slice(0,10)}`);
-
-    // Apply filters
-    let companies = allItems.filter(c => {
-      // Must be active
+    const params = new URLSearchParams({ q: keyword, items_per_page: 50 });
+    const data = await chFetch(`/search/companies?${params}`);
+    return (data.items || []).filter(c => {
       if (c.company_status !== 'active') return false;
-      // Must have a creation date
       if (!c.date_of_creation) return false;
-      // Must be within days range
       if (new Date(c.date_of_creation) < cutoff) return false;
-      // SIC filter — only if selected
       if (sic && sic !== '') {
         const sics = c.sic_codes || [];
-        const prefix = sic.slice(0, 2);
-        if (!sics.some(s => String(s).startsWith(prefix))) return false;
+        if (!sics.some(s => String(s).startsWith(sic.slice(0, 2)))) return false;
       }
-      // Location filter — only if location typed but no keyword
-      if (location && !q) {
+      if (location) {
         const addr = JSON.stringify(c.registered_office_address || '').toLowerCase();
         if (!addr.includes(location.toLowerCase())) return false;
       }
       return true;
     });
+  } catch (e) {
+    console.error(`Keyword "${keyword}" failed:`, e.message);
+    return [];
+  }
+}
 
-    console.log(`After filters: ${companies.length} companies`);
+// ── SEARCH (single keyword) ───────────────────────────────────
+app.get('/api/search', async (req, res) => {
+  const { q = '', sic = '', location = '', days = '60', size = '50' } = req.query;
 
-    // Map and score
-    const scored = companies.map(c => {
-      const base = {
-        number: c.company_number,
-        name: c.title || c.company_name || '',
-        incorporated: c.date_of_creation,
-        postcode: c.registered_office_address?.postal_code || '',
-        city: c.registered_office_address?.locality || c.registered_office_address?.region || '',
-        address: c.registered_office_address,
-        sic: (c.sic_codes || [])[0] || '',
-        sic_codes: c.sic_codes || [],
-        industry: getSICLabel((c.sic_codes || [])[0]),
-        type: c.company_type,
-        status_text: c.company_status,
-        director_name: null
-      };
-      const { score, signals, status } = scoreLead(base);
-      return { ...base, score, signals, status };
-    }).sort((a, b) => b.score - a.score).slice(0, parseInt(size));
+  try {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - parseInt(days));
+    const query = q || location || 'services';
 
-    res.json({
-      total: scored.length,
-      api_total: allItems.length,
-      companies: scored
-    });
+    const items = await fetchKeyword(query, cutoff, sic, location);
+    console.log(`Single search "${query}": ${items.length} results`);
+
+    const companies = mapAndScore(items, parseInt(size));
+    res.json({ total: companies.length, api_total: items.length, companies });
 
   } catch (err) {
     console.error('Search error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── BULK SEARCH (all keywords at once) ───────────────────────
+app.get('/api/bulk-search', async (req, res) => {
+  const { sic = '', location = '', days = '60', size = '200', group = 'all' } = req.query;
+
+  try {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - parseInt(days));
+
+    // Pick keyword list
+    let keywords = [];
+    if (group === 'all') {
+      keywords = Object.values(KEYWORD_GROUPS).flat();
+    } else if (KEYWORD_GROUPS[group]) {
+      keywords = KEYWORD_GROUPS[group];
+    } else {
+      keywords = Object.values(KEYWORD_GROUPS).flat();
+    }
+
+    console.log(`Bulk search: ${keywords.length} keywords, cutoff: ${cutoff.toISOString().slice(0,10)}`);
+
+    // Run all keywords in parallel (batches of 5 to avoid rate limits)
+    const allItems = [];
+    const seen = new Set();
+    const batchSize = 5;
+
+    for (let i = 0; i < keywords.length; i += batchSize) {
+      const batch = keywords.slice(i, i + batchSize);
+      const results = await Promise.all(batch.map(kw => fetchKeyword(kw, cutoff, sic, location)));
+      for (const items of results) {
+        for (const item of items) {
+          if (!seen.has(item.company_number)) {
+            seen.add(item.company_number);
+            allItems.push(item);
+          }
+        }
+      }
+      // Small delay between batches to be respectful of rate limits
+      if (i + batchSize < keywords.length) await new Promise(r => setTimeout(r, 300));
+    }
+
+    console.log(`Bulk: ${allItems.length} unique companies found`);
+
+    const companies = mapAndScore(allItems, parseInt(size));
+    res.json({ total: companies.length, api_total: allItems.length, companies, keywords_searched: keywords.length });
+
+  } catch (err) {
+    console.error('Bulk search error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── MAP + SCORE HELPER ────────────────────────────────────────
+function mapAndScore(items, limit = 200) {
+  return items.map(c => {
+    const base = {
+      number: c.company_number,
+      name: c.title || c.company_name || '',
+      incorporated: c.date_of_creation,
+      postcode: c.registered_office_address?.postal_code || '',
+      city: c.registered_office_address?.locality || c.registered_office_address?.region || '',
+      address: c.registered_office_address,
+      sic: (c.sic_codes || [])[0] || '',
+      sic_codes: c.sic_codes || [],
+      industry: getSICLabel((c.sic_codes || [])[0]),
+      type: c.company_type,
+      status_text: c.company_status,
+      director_name: null
+    };
+    const { score, signals, status } = scoreLead(base);
+    return { ...base, score, signals, status };
+  }).sort((a, b) => b.score - a.score).slice(0, limit);
+}
 
 // Get single company details + director
 app.get('/api/company/:number', async (req, res) => {

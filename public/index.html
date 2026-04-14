@@ -208,6 +208,31 @@ td{padding:12px 14px;vertical-align:middle}
     <div class="panel-top"></div>
     <div class="search-label">Find New UK Companies That Need a Website</div>
     <div class="search-sub">Searches live Companies House data — real incorporations, real directors, free source.</div>
+
+    <!-- BULK SEARCH -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:14px 18px;background:var(--bg4);border:1px solid rgba(37,99,235,0.3);border-radius:10px;flex-wrap:wrap;">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;">⚡ Bulk Scan</div>
+      <div style="font-size:12px;color:var(--muted);flex:1;min-width:160px">50 keywords at once — 100 to 200 leads in one click</div>
+      <select id="q-group" style="background:var(--bg3);border:1px solid var(--border2);border-radius:7px;padding:0 12px;font-family:var(--body);font-size:13px;color:var(--text);outline:none;height:38px">
+        <option value="all">All Industries</option>
+        <option value="trades">Trades Only</option>
+        <option value="food">Food & Hospitality</option>
+        <option value="beauty">Hair & Beauty</option>
+        <option value="health">Health & Wellness</option>
+        <option value="general">General Business</option>
+      </select>
+      <select id="q-bulk-days" style="background:var(--bg3);border:1px solid var(--border2);border-radius:7px;padding:0 12px;font-family:var(--body);font-size:13px;color:var(--text);outline:none;height:38px">
+        <option value="30">Last 30 days</option>
+        <option value="60" selected>Last 60 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+      <button class="btn btn-primary" id="bulk-btn" onclick="runBulkSearch()" style="height:38px;padding:0 22px;font-size:12px;gap:6px;">
+        ⚡ Bulk Search
+      </button>
+    </div>
+
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;display:flex;align-items:center;gap:8px"><span style="flex:1;height:1px;background:var(--border)"></span>or search by keyword<span style="flex:1;height:1px;background:var(--border)"></span></div>
+
     <div class="search-row">
       <div class="fg" style="flex:2;min-width:200px">
         <label>Keyword / Company Name</label>
@@ -235,9 +260,9 @@ td{padding:12px 14px;vertical-align:middle}
         <label>Incorporated Within</label>
         <select id="q-days">
           <option value="7">7 days</option>
-          <option value="14" selected>14 days</option>
+          <option value="14">14 days</option>
           <option value="30">30 days</option>
-          <option value="60">60 days</option>
+          <option value="60" selected>60 days</option>
         </select>
       </div>
       <div class="fg" style="min-width:110px;max-width:120px">
@@ -368,6 +393,53 @@ async function checkServer() {
 }
 checkServer();
 setInterval(checkServer, 30000);
+
+// ── BULK SEARCH ───────────────────────────────────────────
+async function runBulkSearch() {
+  const group = document.getElementById('q-group').value;
+  const days = document.getElementById('q-bulk-days').value;
+  const btn = document.getElementById('bulk-btn');
+
+  showLoading();
+  btn.disabled = true;
+  document.getElementById('search-btn').disabled = true;
+
+  const steps = [
+    'Preparing keyword list...',
+    'Scanning Companies House...',
+    'This takes 15-30 seconds...',
+    'Deduplicating results...',
+    'Scoring leads...'
+  ];
+  for (let i = 0; i < steps.length; i++) {
+    setTimeout(() => stepMsg(steps[i]), i * 4000);
+  }
+
+  try {
+    const params = new URLSearchParams({ group, days, size: 200 });
+    const r = await fetch(`${API}/api/bulk-search?${params}`);
+    if (!r.ok) {
+      const err = await r.json();
+      throw new Error(err.error || 'Bulk search failed');
+    }
+    const data = await r.json();
+
+    allLeads = data.companies.map(c => ({ ...c, isSaved: saved.some(s => s.number === c.number) }));
+
+    hideLoading();
+    renderTable(filtered());
+    updateStats();
+    document.getElementById('session-count').textContent = allLeads.length;
+    toast(`Found ${allLeads.length} leads across ${data.keywords_searched} keywords`, 'ok');
+  } catch (err) {
+    hideLoading();
+    toast(err.message, 'err');
+    showEmpty('Search failed', err.message);
+  }
+
+  btn.disabled = false;
+  document.getElementById('search-btn').disabled = false;
+}
 
 // ── SEARCH ────────────────────────────────────────────────
 async function runSearch() {
