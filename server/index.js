@@ -301,57 +301,74 @@ app.get('/api/search', async (req, res) => {
   try {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - parseInt(days));
-    const incorporatedFrom = cutoff.toISOString().slice(0, 10);
-    const incorporatedTo = new Date().toISOString().slice(0, 10);
 
-    // Use advanced search — supports date range filtering directly
-    const params = new URLSearchParams({
-      incorporated_from: incorporatedFrom,
-      incorporated_to: incorporatedTo,
-      company_status: 'active',
-      company_type: 'ltd',
-      items_per_page: Math.min(parseInt(size), 100),
-      start_index: parseInt(start_index)
-    });
+    // Build search query — use location or keyword, default to 'limited'
+    let query = q || location || 'limited';
 
-    // Add keyword if provided
-    if (q) params.set('company_name_includes', q);
+    // Fetch multiple pages to get enough recent results
+    let allItems = [];
+    const pagesToFetch = 3; // 3 x 50 = 150 results to filter from
 
-    // Add SIC code filter if provided
-    if (sic) params.set('sic_codes', sic);
+    for (let page = 0; page < pagesToFetch; page++) {
+      const params = new URLSearchParams({
+        q: query,
+        items_per_page: 50,
+        start_index: page * 50
+      });
+      console.log(`Fetching page ${page + 1}: /search/companies?${params}`);
+      const data = await chFetch(`/search/companies?${params}`);
+      const items = data.items || [];
+      allItems = allItems.concat(items);
+      // Stop early if no more results
+      if (items.length < 50) break;
+    }
 
-    // Add location if provided
-    if (location) params.set('location', location);
+    console.log(`Total fetched: ${allItems.length}`);
 
-    console.log(`Searching: /advanced-search/companies?${params}`);
-    const data = await chFetch(`/advanced-search/companies?${params}`);
-    console.log(`CH returned ${data.hits} total hits, ${(data.items||[]).length} items`);
+    // Filter by date, status, and optionally SIC/location
+    let companies = allItems
+      .filter(c => {
+        if (c.company_status !== 'active') return false;
+        if (!c.date_of_creation) return false;
+        if (new Date(c.date_of_creation) < cutoff) return false;
+        if (sic) {
+          const sics = c.sic_codes || [];
+          if (!sics.some(s => String(s).startsWith(sic.slice(0, 3)))) return false;
+        }
+        if (location && !q) {
+          const addr = JSON.stringify(c.registered_office_address || '').toLowerCase();
+          if (!addr.includes(location.toLowerCase())) return false;
+        }
+        return true;
+      })
+      .map(c => {
+        const { score, signals, status } = scoreLead(c);
+        return {
+          number: c.company_number,
+          name: c.title || c.company_name,
+          incorporated: c.date_of_creation,
+          postcode: c.registered_office_address?.postal_code || '',
+          city: c.registered_office_address?.locality || c.registered_office_address?.region || '',
+          address: c.registered_office_address,
+          sic: (c.sic_codes || [])[0] || '',
+          sic_codes: c.sic_codes || [],
+          industry: getSICLabel((c.sic_codes || [])[0]),
+          type: c.company_type,
+          status_text: c.company_status,
+          score,
+          signals,
+          status,
+          director_name: null
+        };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, parseInt(size));
 
-    let companies = (data.items || []).map(c => {
-      const { score, signals, status } = scoreLead(c);
-      return {
-        number: c.company_number,
-        name: c.company_name,
-        incorporated: c.date_of_creation,
-        postcode: c.registered_office_address?.postal_code || '',
-        city: c.registered_office_address?.locality || c.registered_office_address?.region || '',
-        address: c.registered_office_address,
-        sic: (c.sic_codes || [])[0] || '',
-        sic_codes: c.sic_codes || [],
-        industry: getSICLabel((c.sic_codes || [])[0]),
-        type: c.company_type,
-        status_text: c.company_status,
-        score,
-        signals,
-        status,
-        director_name: null
-      };
-    }).sort((a, b) => b.score - a.score);
+    console.log(`Returning ${companies.length} leads after filtering`);
 
     res.json({
       total: companies.length,
-      api_total: data.hits || companies.length,
-      api_total: data.total_results,
+      api_total: allItems.length,
       companies
     });
 
