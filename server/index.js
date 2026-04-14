@@ -302,74 +302,74 @@ app.get('/api/search', async (req, res) => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - parseInt(days));
 
-    // Build search query — use location or keyword, default to 'limited'
-    let query = q || location || 'limited';
+    // Build query — keyword takes priority, fall back to location, then broad terms
+    const query = q || location || 'ltd';
 
-    // Fetch multiple pages to get enough recent results
+    // Fetch 3 pages (150 results) from CH search
     let allItems = [];
-    const pagesToFetch = 3; // 3 x 50 = 150 results to filter from
-
-    for (let page = 0; page < pagesToFetch; page++) {
+    for (let page = 0; page < 3; page++) {
       const params = new URLSearchParams({
         q: query,
         items_per_page: 50,
         start_index: page * 50
       });
-      console.log(`Fetching page ${page + 1}: /search/companies?${params}`);
       const data = await chFetch(`/search/companies?${params}`);
       const items = data.items || [];
+      console.log(`Page ${page+1}: ${items.length} items, first date: ${items[0]?.date_of_creation}`);
       allItems = allItems.concat(items);
-      // Stop early if no more results
       if (items.length < 50) break;
     }
 
-    console.log(`Total fetched: ${allItems.length}`);
+    console.log(`Fetched ${allItems.length} total. Date cutoff: ${cutoff.toISOString().slice(0,10)}`);
 
-    // Filter by date, status, and optionally SIC/location
-    let companies = allItems
-      .filter(c => {
-        if (c.company_status !== 'active') return false;
-        if (!c.date_of_creation) return false;
-        if (new Date(c.date_of_creation) < cutoff) return false;
-        if (sic) {
-          const sics = c.sic_codes || [];
-          if (!sics.some(s => String(s).startsWith(sic.slice(0, 3)))) return false;
-        }
-        if (location && !q) {
-          const addr = JSON.stringify(c.registered_office_address || '').toLowerCase();
-          if (!addr.includes(location.toLowerCase())) return false;
-        }
-        return true;
-      })
-      .map(c => {
-        const { score, signals, status } = scoreLead(c);
-        return {
-          number: c.company_number,
-          name: c.title || c.company_name,
-          incorporated: c.date_of_creation,
-          postcode: c.registered_office_address?.postal_code || '',
-          city: c.registered_office_address?.locality || c.registered_office_address?.region || '',
-          address: c.registered_office_address,
-          sic: (c.sic_codes || [])[0] || '',
-          sic_codes: c.sic_codes || [],
-          industry: getSICLabel((c.sic_codes || [])[0]),
-          type: c.company_type,
-          status_text: c.company_status,
-          score,
-          signals,
-          status,
-          director_name: null
-        };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, parseInt(size));
+    // Apply filters
+    let companies = allItems.filter(c => {
+      // Must be active
+      if (c.company_status !== 'active') return false;
+      // Must have a creation date
+      if (!c.date_of_creation) return false;
+      // Must be within days range
+      if (new Date(c.date_of_creation) < cutoff) return false;
+      // SIC filter — only if selected
+      if (sic && sic !== '') {
+        const sics = c.sic_codes || [];
+        const prefix = sic.slice(0, 2);
+        if (!sics.some(s => String(s).startsWith(prefix))) return false;
+      }
+      // Location filter — only if location typed but no keyword
+      if (location && !q) {
+        const addr = JSON.stringify(c.registered_office_address || '').toLowerCase();
+        if (!addr.includes(location.toLowerCase())) return false;
+      }
+      return true;
+    });
 
-    console.log(`Returning ${companies.length} leads after filtering`);
+    console.log(`After filters: ${companies.length} companies`);
+
+    // Map and score
+    const scored = companies.map(c => {
+      const base = {
+        number: c.company_number,
+        name: c.title || c.company_name || '',
+        incorporated: c.date_of_creation,
+        postcode: c.registered_office_address?.postal_code || '',
+        city: c.registered_office_address?.locality || c.registered_office_address?.region || '',
+        address: c.registered_office_address,
+        sic: (c.sic_codes || [])[0] || '',
+        sic_codes: c.sic_codes || [],
+        industry: getSICLabel((c.sic_codes || [])[0]),
+        type: c.company_type,
+        status_text: c.company_status,
+        director_name: null
+      };
+      const { score, signals, status } = scoreLead(base);
+      return { ...base, score, signals, status };
+    }).sort((a, b) => b.score - a.score).slice(0, parseInt(size));
 
     res.json({
-      total: companies.length,
+      total: scored.length,
       api_total: allItems.length,
-      companies
+      companies: scored
     });
 
   } catch (err) {
